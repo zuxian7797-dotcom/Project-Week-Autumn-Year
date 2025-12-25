@@ -1,0 +1,93 @@
+#include <Wire.h>
+#include <LiquidCrystal.h>
+
+#define enA 11
+#define in1 1
+#define in2 2
+#define enB 3
+#define in3 12
+#define in4 13
+
+LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
+
+bool stopM = false;
+unsigned long lastMillis;
+
+void setup() {
+  // Set all motor control pins to OUTPUT
+  pinMode(enA, OUTPUT);
+  pinMode(in1, OUTPUT);
+  pinMode(in2, OUTPUT);
+  pinMode(enB, OUTPUT);
+  pinMode(in3, OUTPUT);
+  pinMode(in4, OUTPUT);
+
+  // Set up the LCD's number of columns and rows:
+  lcd.begin(16, 2);
+  // Print a message to the LCD.
+  lcd.print("TIME:");
+  lastMillis = millis();
+}
+
+void loop() {
+  // Print the number of seconds since reset:
+  unsigned long sec =(millis()-lastMillis)/1000;
+  unsigned long millisec =(millis()-lastMillis)%1000;
+  
+  if(millis()-lastMillis >= 10010 && !stopM){
+    stopMotors();
+    stopM = true ;
+  }
+
+  if(!stopM){
+    setMotorA(200, true);  // Set Motor A to speed 200 (out of 255) and move forward (right)
+    setMotorB(200, true);  // Set Motor B (left)
+    lcd.setCursor(5, 0);
+    char fTime[7];
+    sprintf(fTime,"%2ld:%03ld",sec,millisec);
+    lcd.print(fTime);
+  }
+}
+
+// Function to control Motor A
+void setMotorA(int speed, bool forward) {
+  // Set speed
+  analogWrite(enA, speed);
+
+  // Set direction
+  if (forward) {
+    digitalWrite(in1, HIGH);
+    digitalWrite(in2, LOW);
+  } else {
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, HIGH);
+  }
+}
+
+// Function to control Motor B
+void setMotorB(int speed, bool forward) {
+  // Set speed
+  analogWrite(enB, speed);
+
+  // Set direction
+  if (forward) {
+    digitalWrite(in3, HIGH);
+    digitalWrite(in4, LOW);
+  } else {
+    digitalWrite(in3, LOW);
+    digitalWrite(in4, HIGH);
+  }
+}
+
+// Function to stop both motors
+void stopMotors() {
+  // Set speed to 0
+  analogWrite(enA, 0);
+  analogWrite(enB, 0);
+
+  // Set direction pins to LOW to ensure motors are not driven
+  digitalWrite(in1, LOW);
+  digitalWrite(in2, LOW);
+  digitalWrite(in3, LOW);
+  digitalWrite(in4, LOW);
+}
