@@ -1,0 +1,105 @@
+#include <LiquidCrystal.h>
+
+// --- Motor Pins (from Second Code) ---
+#define enA 11  // PWM pin for speed control (left)
+#define in1 13  // Input pin 1
+#define in2 12  // Input pin 2
+
+#define enB 3   // PWM pin for speed control (right)
+#define in3 2   // Input pin 3
+#define in4 1   // Input pin 4
+
+// --- Sensor Pins (from Second Code) ---
+const int lineFollowRightPin = A2;  
+const int lineFollowLeftPin = A3;   
+
+#define FORWARD 1
+#define BACKWARD 0
+
+// Initialize the LCD (Pins from Second Code)
+LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
+
+int state = 0; // 0 = Left turn, 1 = Right turn
+
+void rotateMotorA(int speed, int direction) {
+  speed = constrain(speed, 0, 255);  
+  analogWrite(enA, speed);
+  if (direction == FORWARD) {
+    digitalWrite(in1, HIGH);
+    digitalWrite(in2, LOW);
+  } else if (direction == BACKWARD) {
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, HIGH);
+  }
+}
+
+void rotateMotorB(int speed, int direction) {
+  speed = constrain(speed, 0, 255);  
+  analogWrite(enB, speed);
+  if (direction == FORWARD) {
+    digitalWrite(in3, HIGH);
+    digitalWrite(in4, LOW);
+  } else if (direction == BACKWARD) {
+    digitalWrite(in3, LOW);
+    digitalWrite(in4, HIGH);
+  }
+}
+
+void stopMotors() {
+  analogWrite(enA, 0);
+  analogWrite(enB, 0);
+  digitalWrite(in1, LOW);
+  digitalWrite(in2, LOW);
+  digitalWrite(in3, LOW);
+  digitalWrite(in4, LOW);
+}
+
+void setup() {
+  lcd.begin(16, 2);
+  lcd.clear();
+  
+  pinMode(enA, OUTPUT);
+  pinMode(in1, OUTPUT);
+  pinMode(in2, OUTPUT);
+  pinMode(enB, OUTPUT);
+  pinMode(in3, OUTPUT);
+  pinMode(in4, OUTPUT);
+
+  pinMode(lineFollowRightPin, INPUT);
+  pinMode(lineFollowLeftPin, INPUT);
+  
+  stopMotors();
+}
+
+void loop() {
+  // 1. Read the sensors
+  int leftVal = analogRead(lineFollowLeftPin);
+  int rightVal = analogRead(lineFollowRightPin);
+
+  // 2. Display values on LCD (Structure from First Code)
+  lcd.setCursor(0, 0);
+  lcd.print("L:");
+  lcd.print(leftVal);
+  lcd.print("   "); 
+  
+  lcd.setCursor(0, 1);
+  lcd.print("R:");
+  lcd.print(rightVal);
+  lcd.print("   ");
+
+  // 3. Movement Logic (Structure from First Code)
+  if (state == 0) {
+    rotateMotorA(150, BACKWARD);    
+    rotateMotorB(0, BACKWARD);   
+  } else {
+    rotateMotorA(0, BACKWARD); 
+    rotateMotorB(150, BACKWARD);      
+  }
+
+  // 4. Update State based on thresholds (Structure from First Code)
+  if (leftVal < 500) {
+    state = 0;
+  } else if (rightVal < 500) {
+    state = 1;
+  }
+}
