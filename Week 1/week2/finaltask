@@ -1,0 +1,215 @@
+#include <LiquidCrystal.h>
+
+// --- Motor Pins (from both files) ---
+// Motor A (assumed left motor)
+#define enA 11  // PWM pin for speed control (left)
+#define in1 13  // Input pin 1
+#define in2 12  // Input pin 2
+
+// Motor B (assumed right motor)
+#define enB 3  // PWM pin for speed control (right)
+#define in3 2  // Input pin 3
+#define in4 1  // Input pin 4
+
+// --- Sensor Pins (Merged from both files) ---
+// Line following sensors (from Week2_LineFollow.ino)
+const int lineFollowRightPin = A2;  // [cite: 40]
+const int lineFollowLeftPin = A3;   // [cite: 41]
+
+// Encoder sensors (from ProjectWeek1V2.ino)
+const int encoderRightPin = A1;  // [cite: 1]
+const int encoderLeftPin = A5;   // [cite: 3]
+
+// --- Constants ---
+#define FORWARD 1
+#define BACKWARD 0
+
+// Line following thresholds (from Week2_LineFollow.ino)
+#define LEFTBLACKTHRES 300
+#define LEFTWHITETHRES 700
+#define RIGHTBLACKTHRES 500
+#define RIGHTWHITETHRES 700
+
+
+#define CM_PER_COUNT 0.5  // (pi*66.1/10)/20
+
+// --- LCD Initialization ---
+LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
+
+// --- Global Variables ---
+// For line following (from Week2_LineFollow.ino)
+int state = 0;  //left 0 right 1
+unsigned long lastMillis;
+
+// For encoder counting (from ProjectWeek1V2.ino)
+volatile unsigned long rightCount = 0;  // [cite: 4]
+volatile unsigned long leftCount = 0;   // [cite: 5]
+int stopCounter = 0;
+
+// --- Motor Control Functions (from Week2_LineFollow.ino) ---
+void rotateMotorA(int speed, int direction) {
+  speed = constrain(speed, 0, 255);  // [cite: 43]
+  analogWrite(enA, speed);
+  if (direction == FORWARD) {
+    digitalWrite(in1, HIGH);
+    digitalWrite(in2, LOW);  // [cite: 44]
+  } else if (direction == BACKWARD) {
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, HIGH);  // [cite: 45]
+  }
+}
+
+void rotateMotorB(int speed, int direction) {
+  speed = constrain(speed, 0, 255);  // [cite: 46]
+  analogWrite(enB, speed);
+  if (direction == FORWARD) {
+    digitalWrite(in3, HIGH);
+    digitalWrite(in4, LOW);  // [cite: 47]
+  } else if (direction == BACKWARD) {
+    digitalWrite(in3, LOW);
+    digitalWrite(in4, HIGH);  // [cite: 48]
+  }
+}
+
+void stopMotors() {
+  analogWrite(enA, 0);
+  analogWrite(enB, 0);
+  digitalWrite(in1, LOW);
+  digitalWrite(in2, LOW);
+  digitalWrite(in3, LOW);
+  digitalWrite(in4, LOW);  // [cite: 49]
+}
+
+// --- Interrupt Service Routine (from ProjectWeek1V2.ino) ---
+// This runs in the background to count encoder ticks on A1 and A2
+ISR(PCINT1_vect) {
+  uint8_t portState = PINC;  //
+
+  // Check A1 (PC1) for right encoder
+  int rightState = (portState >> 1) & 1;  // [cite: 18]
+  // Check A2 (PC2) for left encoder
+  int leftState = (portState >> 2) & 1;  // [cite: 19]
+
+  static int lastRightState = 0;
+  static int lastLeftState = 0;
+
+  if (rightState != lastRightState) {
+    rightCount++;  // [cite: 20]
+  }
+  if (leftState != lastLeftState) {
+    leftCount++;  // [cite: 21]
+  }
+
+  lastRightState = rightState;
+  lastLeftState = leftState;
+}
+
+void setup() {
+  // Initialize LCD
+  lcd.begin(16, 2);
+  lcd.clear();  // [cite: 50]
+
+  // Initialize motor pins
+  pinMode(enA, OUTPUT);
+  pinMode(in1, OUTPUT);
+  pinMode(in2, OUTPUT);
+  pinMode(enB, OUTPUT);
+  pinMode(in3, OUTPUT);
+  pinMode(in4, OUTPUT);  // [cite: 51]
+
+  // Initialize IR sensor pins
+  pinMode(lineFollowRightPin, INPUT);  // [cite: 51]
+  pinMode(lineFollowLeftPin, INPUT);   // [cite: 51]
+  pinMode(encoderRightPin, INPUT);     // [cite: 24]
+  pinMode(encoderLeftPin, INPUT);      // [cite: 24]
+
+  // --- Enable Pin Change Interrupts for Encoders (from ProjectWeek1V2.ino) ---
+  // We need to listen for changes on A1 (PCINT9) and A2 (PCINT10)
+  PCICR |= (1 << PCIE1);                     // Enable PCINT[14:8] group (Port C) [cite: 25]
+  PCMSK1 |= (1 << PCINT9) | (1 << PCINT10);  // Enable PC1 (A1) and PC2 (A2) [cite: 26]
+
+  // Initialize motors in stopped state
+  stopMotors();  // [cite: 52]
+
+  // Initialize serial for debugging
+  Serial.begin(115200);  // [cite: 52]
+  lastMillis = millis();
+}
+
+void loop() {
+  lcd.clear();
+
+  // --- Line Following Logic (from Week2_LineFollow.ino) ---
+  int leftVal = analogRead(lineFollowLeftPin);
+  int rightVal = analogRead(lineFollowRightPin);  // [cite: 53]
+  if (leftVal < 430 && rightVal < 430) {
+
+    // 1. Stop the motors
+    // stopMotors();
+
+    float avgCounts = (leftCount + rightCount) / 2.0;
+    float distance = avgCounts * CM_PER_COUNT;
+
+    unsigned long currentMillis = millis();
+    unsigned long milliseconds = (currentMillis - lastMillis) % 1000;
+    unsigned long seconds = (currentMillis - lastMillis) / 1000;
+    char formattedTime[8];
+    sprintf(formattedTime, "%02ld:%03ld", seconds, milliseconds);
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Time: ");
+    lcd.setCursor(6,0);
+    lcd.print(formattedTime);
+    lcd.setCursor(0, 1);
+    lcd.print("Dist: ");
+    lcd.print(distance);
+    lcd.print(" cm");
+
+
+    stopCounter++;
+
+    if (stopCounter > 5) {
+      while (1) {
+        stopMotors();
+      }
+    }
+  } else {
+    stopCounter = 0;
+  }
+  // Display line sensor values
+  lcd.setCursor(0, 0);
+  lcd.print("L:");
+  lcd.print(leftVal);
+  lcd.setCursor(8, 0);
+  lcd.print("R:");
+  lcd.print(rightVal);
+
+  if (state == 0) {
+    rotateMotorA(150, BACKWARD);
+    rotateMotorB(0, BACKWARD);  // [cite: 54]
+  } else {
+    rotateMotorA(0, BACKWARD);
+    rotateMotorB(150, BACKWARD);
+  }
+
+  if (leftVal < 500) {
+    state = 0;  // [cite: 55]
+  } else if (rightVal < 500) {
+    state = 1;  // [cite: 56]
+  }
+
+  // --- NEW: Distance Calculation and Display ---
+
+  // Calculate average counts from both encoders
+  float avgCounts = (leftCount + rightCount) / 2.0;
+
+  // Convert counts to distance (e.g., cm)
+  float distance = avgCounts * CM_PER_COUNT;
+
+  // Display the distance on the LCD
+  lcd.setCursor(0, 1);
+  lcd.print("Dist: ");
+  lcd.print(distance);
+  lcd.print(" cm");
+}
